@@ -40,16 +40,16 @@ def simple_upload(request):
     return render(request,'simple_file_upload.html')
 
 
-async def handle_uploaded_file(data,f):
+async def handle_uploaded_file(f):
     if str(f).split('.')[1] == 'csv':
-        #fs = FileSystemStorage()
-        #filename = fs.save(f.name, f)
-        #uploaded_file_url = fs.url(filename)
-        await db_insertion(data)
-        async with aiofiles.open(f"media/{f.name}", "wb+") as destination:
-            for chunk in f.chunks():
-                await destination.write(chunk)
-        return "file is uploades "
+        fs = FileSystemStorage()
+        filename = fs.save(f.name, f)
+        uploaded_file_url = fs.url(filename)
+        #await db_insertion(data)
+        #async with aiofiles.open(f"media/{f.name}", "wb+") as destination:
+        #    for chunk in f.chunks():
+        #        await destination.write(chunk)
+        return "file is uploaded to {}".format(uploaded_file_url)
     else:
         return "file is not csv"
 
@@ -62,7 +62,7 @@ def db_insertion(data):
         print(str(e))
 
 
-def async_uploader(request):
+async def async_uploader(request):
     if request.method == "POST":
         t=time()
         name = request.POST["name"]
@@ -78,9 +78,13 @@ def async_uploader(request):
             "address": address
         }
 
-        #await db_insertion(data)
-        #await handle_uploaded_file(request.FILES["myfile"])
-        asyncio.run(handle_uploaded_file(data,request.FILES["myfile"]))
+        await db_insertion(data)
+        await handle_uploaded_file(request.FILES["myfile"])
+        #asyncio.run(handle_uploaded_file(data,request.FILES["myfile"]))
+        #task1 = asyncio.create_task(db_insertion(data))
+        #task2 = asyncio.create_task(handle_uploaded_file(request.FILES["myfile"]))
+        #await task1
+        #await task2
 
         return HttpResponse("file uploaded in time of : {}".format(time()-t))
 
