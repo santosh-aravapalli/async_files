@@ -5,12 +5,13 @@ from django.core.files.storage import FileSystemStorage
 from django.http import HttpResponse
 from .models import Employee
 from asgiref.sync import sync_to_async
-
+from time import time
 
 # Create your views here.
 
 def simple_upload(request):
     if request.method == "POST":
+        t = time()
         name = request.POST["name"]
         age = request.POST['age']
         designation  = request.POST['designation']
@@ -33,23 +34,25 @@ def simple_upload(request):
             fs = FileSystemStorage()
             filename = fs.save(myfile.name, myfile)
             uploaded_file_url = fs.url(filename)
-            return HttpResponse("file is saved in :{}".format(uploaded_file_url))
+            return HttpResponse("file is saved in :{} and in time of :{}".format(uploaded_file_url,time()-t))
         else:
             messages.error(request,"file is not csv format")
     return render(request,'simple_file_upload.html')
 
 
-async def handle_uploaded_file(f):
+async def handle_uploaded_file(data,f):
     if str(f).split('.')[1] == 'csv':
-        fs = FileSystemStorage()
-        filename = fs.save(f.name, f)
-        uploaded_file_url = fs.url(filename)
+        #fs = FileSystemStorage()
+        #filename = fs.save(f.name, f)
+        #uploaded_file_url = fs.url(filename)
+        await db_insertion(data)
         async with aiofiles.open(f"media/{f.name}", "wb+") as destination:
             for chunk in f.chunks():
                 await destination.write(chunk)
-        return "file is uploades : {}".format(uploaded_file_url)
+        return "file is uploades "
     else:
         return "file is not csv"
+
 
 @sync_to_async
 def db_insertion(data):
@@ -59,8 +62,9 @@ def db_insertion(data):
         print(str(e))
 
 
-async def async_uploader(request):
+def async_uploader(request):
     if request.method == "POST":
+        t=time()
         name = request.POST["name"]
         age = request.POST['age']
         designation = request.POST['designation']
@@ -74,9 +78,10 @@ async def async_uploader(request):
             "address": address
         }
 
-        await db_insertion(data)
-        await handle_uploaded_file(request.FILES["myfile"])
+        #await db_insertion(data)
+        #await handle_uploaded_file(request.FILES["myfile"])
+        asyncio.run(handle_uploaded_file(data,request.FILES["myfile"]))
 
-        return HttpResponse("file uploaded in ")
+        return HttpResponse("file uploaded in time of : {}".format(time()-t))
 
     return render(request, "async_file_upload.html")
