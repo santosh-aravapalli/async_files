@@ -6,10 +6,14 @@ from django.http import HttpResponse
 from .models import Employee
 from asgiref.sync import sync_to_async
 from time import time
+import csv
+import re
+import codecs
 
 # Create your views here.
 
 def simple_upload(request):
+
     if request.method == "POST":
         t = time()
         name = request.POST["name"]
@@ -30,26 +34,62 @@ def simple_upload(request):
             messages.error(request,str(e))
 
         myfile = request.FILES['myfile']
-        if str(myfile).split('.')[1] == 'csv':
+        file_content = myfile.read()
+        decode_content = file_content.decode('utf-8-sig').splitlines()
+        decode_content.pop()
+        reader = csv.reader(decode_content)
+        status = 200
+        row_count = 1
+        for row in reader:
+            if len(row) != 2 :
+                status = 502
+                msg = f"at row {row_count} row lenght is not matching "
+                break
+            if not re.compile("^[0-9]{10}$").match(row[0]):
+                status = 502
+                msg = f" invalid msisdn at row {row_count} "
+                break
+            row_count = row_count+1
+
+        if status == 200:
             fs = FileSystemStorage()
             filename = fs.save(myfile.name, myfile)
             uploaded_file_url = fs.url(filename)
             return HttpResponse("file is saved in :{} and in time of :{}".format(uploaded_file_url,time()-t))
         else:
-            messages.error(request,"file is not csv format")
+            messages.error(request, "file is not saved")
+            return HttpResponse(f"file is not saved in error msg :{msg} and in time of :{time() - t}")
+
     return render(request,'simple_file_upload.html')
+
+
+async def DataValidation(data):
+    decode_content = data.decode('utf-8-sig').splitlines()
+    decode_content.pop()
+    reader = csv.reader(decode_content)
+    status = 200
+    msg = 'data validation done successfully'
+    row_count = 1
+    for row in reader:
+        if len(row) != 2:
+            status = 502
+            msg = f"at row {row_count} row lenght is not matching "
+            break
+        if not re.compile("^[0-9]{10}$").match(row[0]):
+            status = 502
+            msg = f" invalid msisdn at row {row_count} "
+            break
+        row_count = row_count + 1
+
+    return status,msg
 
 
 async def handle_uploaded_file(f):
     if str(f).split('.')[1] == 'csv':
-        fs = FileSystemStorage()
-        filename = fs.save(f.name, f)
-        uploaded_file_url = fs.url(filename)
-        #await db_insertion(data)
-        #async with aiofiles.open(f"media/{f.name}", "wb+") as destination:
-        #    for chunk in f.chunks():
-        #        await destination.write(chunk)
-        return "file is uploaded to {}".format(uploaded_file_url)
+        async with aiofiles.open(f"media/{f.name}", "wb+") as destination:
+            for chunk in f.chunks():
+                await destination.write(chunk)
+        return "file uploaded"
     else:
         return "file is not csv"
 
@@ -58,8 +98,10 @@ async def handle_uploaded_file(f):
 def db_insertion(data):
     try:
         Employee.objects.create(**data)
+        return "db insertion done"
     except Exception as e:
         print(str(e))
+        return str(e)
 
 
 async def async_uploader(request):
@@ -78,13 +120,20 @@ async def async_uploader(request):
             "address": address
         }
 
-        await db_insertion(data)
-        await handle_uploaded_file(request.FILES["myfile"])
-        #asyncio.run(handle_uploaded_file(data,request.FILES["myfile"]))
-        #task1 = asyncio.create_task(db_insertion(data))
-        #task2 = asyncio.create_task(handle_uploaded_file(request.FILES["myfile"]))
-        #await task1
-        #await task2
+        myfile = request.FILES["myfile"]
+        task1 = asyncio.create_task(db_insertion(data))
+        datavalid_tasks = list()
+        for chunk in myfile.chunks():
+            datavalid_tasks.append(asyncio.create_task(DataValidation(chunk)))
+        task2 = asyncio.create_task(handle_uploaded_file(request.FILES["myfile"]))
+        done = await asyncio.gather(
+            task1,
+            *datavalid_tasks
+        )
+
+        res = await task2
+
+        print(done,res)
 
         return HttpResponse("file uploaded in time of : {}".format(time()-t))
 
